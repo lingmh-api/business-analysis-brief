@@ -69,7 +69,7 @@ if "generator" not in st.session_state:
 if "data_loaded" not in st.session_state:
     st.session_state["data_loaded"] = False
 if "use_sample" not in st.session_state:
-    st.session_state["use_sample"] = True  # 首次加载自动使用示例数据
+    st.session_state["use_sample"] = False  # 默认不加载示例数据
 
 processor = st.session_state["processor"]
 detector = st.session_state["detector"]
