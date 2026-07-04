@@ -71,8 +71,15 @@ if "use_sample" not in st.session_state:
 processor = st.session_state["processor"]
 detector = st.session_state["detector"]
 
+# ========== 检测用户上传 ==========
+has_upload = uploaded_revenue is not None or uploaded_ops is not None
+
+if has_upload:
+    st.session_state["use_sample"] = False
+    st.session_state["reload"] = True
+
 # ========== 数据加载逻辑 ==========
-if st.session_state["use_sample"] or uploaded_revenue or uploaded_ops:
+if st.session_state["use_sample"] or has_upload:
     if not st.session_state["data_loaded"] or st.session_state.get("reload", False):
         with st.spinner("🔄 正在加载和处理数据..."):
             # 加载数据
@@ -82,7 +89,7 @@ if st.session_state["use_sample"] or uploaded_revenue or uploaded_ops:
                 processor.revenue_df["month"] = processor.revenue_df["date"].dt.month
                 st.success(f"✅ 已上传收入数据：{len(processor.revenue_df)} 条")
             elif st.session_state["use_sample"]:
-                load_result = processor.load_data()
+                processor.load_data()
 
             if uploaded_ops is not None:
                 processor.operations_df = pd.read_csv(uploaded_ops)
