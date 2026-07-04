@@ -44,6 +44,9 @@ with st.sidebar:
     uploaded_ops = st.file_uploader("上传运营数据 (CSV)", type="csv", key="ops")
 
     if st.button("🔄 加载示例数据", use_container_width=True):
+        # 清除上传文件缓存，强制加载示例数据
+        st.session_state["data_loaded"] = False
+        st.session_state["data_key"] = ""
         st.session_state["use_sample"] = True
         st.rerun()
 
@@ -71,52 +74,61 @@ if "use_sample" not in st.session_state:
 processor = st.session_state["processor"]
 detector = st.session_state["detector"]
 
-# ========== 检测用户上传 ==========
+# ========== 数据加载逻辑（简化版） ==========
 has_upload = uploaded_revenue is not None or uploaded_ops is not None
 
+# 生成当前数据源的"指纹"，用于检测是否需要重新加载
 if has_upload:
-    st.session_state["use_sample"] = False
-    st.session_state["reload"] = True
+    current_key = f"upload_{uploaded_revenue.name if uploaded_revenue else 'none'}_{uploaded_ops.name if uploaded_ops else 'none'}"
+else:
+    current_key = "sample"
 
-# ========== 数据加载逻辑 ==========
-if st.session_state["use_sample"] or has_upload:
-    if not st.session_state["data_loaded"] or st.session_state.get("reload", False):
-        with st.spinner("🔄 正在加载和处理数据..."):
-            # 加载数据
-            if uploaded_revenue is not None:
-                processor.revenue_df = pd.read_csv(uploaded_revenue)
-                processor.revenue_df["date"] = pd.to_datetime(processor.revenue_df["date"])
-                processor.revenue_df["month"] = processor.revenue_df["date"].dt.month
-                st.success(f"✅ 已上传收入数据：{len(processor.revenue_df)} 条")
-            elif st.session_state["use_sample"]:
-                processor.load_data()
+# 检查是否需要加载/重新加载
+need_load = (
+    not st.session_state["data_loaded"]  # 还没加载过
+    or st.session_state.get("data_key", "") != current_key  # 数据源变了
+    or st.session_state.get("use_sample", False) != (not has_upload)  # 模式变了
+)
 
-            if uploaded_ops is not None:
-                processor.operations_df = pd.read_csv(uploaded_ops)
-                processor.operations_df["date"] = pd.to_datetime(processor.operations_df["date"])
-                processor.operations_df["month"] = processor.operations_df["date"].dt.month
-                st.success(f"✅ 已上传运营数据：{len(processor.operations_df)} 条")
+if need_load and (st.session_state.get("use_sample", True) or has_upload):
+    with st.spinner("🔄 正在加载和处理数据..."):
+        # 加载收入数据
+        if uploaded_revenue is not None:
+            processor.revenue_df = pd.read_csv(uploaded_revenue)
+            processor.revenue_df["date"] = pd.to_datetime(processor.revenue_df["date"])
+            processor.revenue_df["month"] = processor.revenue_df["date"].dt.month
+            st.success(f"✅ 已上传收入数据：{len(processor.revenue_df)} 条")
+        else:
+            processor.load_data()  # 加载示例数据
 
-            # 清理和计算
-            processor.clean_data()
-            df = processor.calculate_kpi()
+        # 加载运营数据
+        if uploaded_ops is not None:
+            processor.operations_df = pd.read_csv(uploaded_ops)
+            processor.operations_df["date"] = pd.to_datetime(processor.operations_df["date"])
+            processor.operations_df["month"] = processor.operations_df["date"].dt.month
+            st.success(f"✅ 已上传运营数据：{len(processor.operations_df)} 条")
 
-            # 异常检测
-            anomaly_df = detector.detect_all(df)
+        # 清理和计算
+        processor.clean_data()
+        df = processor.calculate_kpi()
 
-            # 存储到session
-            st.session_state["df"] = df
-            st.session_state["anomaly_df"] = anomaly_df
-            st.session_state["data_loaded"] = True
-            st.session_state["reload"] = False
+        # 异常检测
+        anomaly_df = detector.detect_all(df)
 
-            # 初始化AI生成器
-            if api_key:
-                st.session_state["generator"] = BriefGenerator(api_key=api_key)
-            else:
-                st.session_state["generator"] = BriefGenerator(api_key="")
+        # 存储到session
+        st.session_state["df"] = df
+        st.session_state["anomaly_df"] = anomaly_df
+        st.session_state["data_loaded"] = True
+        st.session_state["data_key"] = current_key
+        st.session_state["use_sample"] = not has_upload
 
-            st.success("🎉 数据加载完成！")
+        # 初始化AI生成器
+        if api_key:
+            st.session_state["generator"] = BriefGenerator(api_key=api_key)
+        else:
+            st.session_state["generator"] = BriefGenerator(api_key="")
+
+        st.success("🎉 数据加载完成！")
 
 # ========== 主界面 Tabs ==========
 if st.session_state["data_loaded"]:
